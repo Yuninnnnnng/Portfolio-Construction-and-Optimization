@@ -1,0 +1,323 @@
+---
+title: "Portfolio Construct & Performance Analysis"
+output:
+  pdf_document: default
+  html_document: default
+date: "6/27/2018"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(repos="https://cran.rstudio.com" )
+```
+
+## Construct optimal portfolio
+
+```{r car}
+library(readr)
+stocks <- read_csv("/Users/yuning/Documents/T3/Portfolio Management/stocks.csv", 
+                         col_types = cols(ACA = col_number(), 
+                                                     ACA_return = col_number(), AD = col_number(), 
+                                                    AD_return = col_number(), BB = col_number(), 
+                                                    BB_return = col_number(), BM = col_number(), 
+                                                    BM_return = col_number(), CAI = col_number(), 
+                                                    CAI_return = col_number(), Dates = col_date(format = "%m/%d/%Y"), 
+                                                    ENX = col_number(), ENX_return = col_number(), 
+                                                    GFC = col_number(), GFC_return = col_number(), 
+                                                    HBRN = col_number(), HBRN_return = col_number(), 
+                                                    KCR = col_number(), KCR_return = col_number(), 
+                                                    STREV = col_number(), STREV_return = col_number(), 
+                                                    UPM = col_number(), UPM_return = col_number()))
+View(stocks)
+```
+
+compute correlation and covariance of each stock in the portfolio
+
+```{r pressure, echo=FALSE}
+#compute correlation and covariance
+library(ggcorrplot)
+stocks_return <- cbind(stocks$Dates, subset(stocks[,13:ncol(stocks)]))
+stocks_return <- stocks_return[-1,]
+cov(stocks_return[,2:12])
+
+corr <- cor(stocks_return[,2:12])
+ggcorrplot(corr, hc.order = TRUE, type = "lower",
+           outline.col = "white", lab = TRUE)
+
+```
+
+Get the risk free rate
+```{r}
+# 10-year eurozone central governement bond yield interception date 1st. Feb 2017
+rf_yield <- 0.00513337
+rf_daily <- exp(rf_yield/365) -1
+print(rf_daily) # 0.001881055
+```
+
+Compute market preimum
+```{r}
+stocks_return$mkt_premium <- NA
+
+for (i in 1:length(stocks_return$`stocks$Dates`)) {
+  stocks_return$mkt_premium[i] <- stocks_return$BM_return[i] - rf_daily
+}
+
+mkt_premium <- stocks_return$mkt_premium
+```
+
+Fit regression line to 10 individual stocks to get estimated parameters
+```{r}
+#regression GFC
+gfc <- stocks_return$GFC_return - rf_daily
+model1 <- lm(gfc~mkt_premium)
+summary(model1)
+#regression ENX
+enx <- stocks_return$ENX_return - rf_daily
+model2 <- lm(enx~mkt_premium)
+summary(model2)
+
+#regression BB
+bic <- stocks_return$BB_return - rf_daily
+model3 <- lm(bic~mkt_premium)
+summary(model3)
+
+#regression AD
+ad <- stocks_return$AD_return - rf_daily
+model4 <-lm(ad~mkt_premium)
+summary(model4)
+
+#regression ACA
+aca <- stocks_return$ACA_return - rf_daily
+model5 <- lm(aca~mkt_premium)
+summary(model5)
+
+#regression UPM
+upm <- stocks_return$UPM_return- rf_daily
+model6 <- lm(upm~mkt_premium)
+summary(model6)
+
+#regression KRC
+krc <- stocks_return$KCR_return- rf_daily
+model7 <- lm(krc~mkt_premium)
+summary(model7)
+
+#regression STREV
+strev <- stocks_return$STREV_return - rf_daily
+model8 <- lm(strev~mkt_premium)
+summary(model8)
+
+#regression CAI
+cai <- stocks_return$CAI_return - rf_daily
+model9 <- lm(cai~mkt_premium)
+summary(model9)
+
+#regression HBRN
+hbrn <- stocks_return$HBRN_return - rf_daily
+model10 <- lm(hbrn~mkt_premium)
+summary(model10)
+
+alpha <- c(model1$coefficients[1], model2$coefficients[1], model3$coefficients[1], 
+         model4$coefficients[1], model5$coefficients[1], model6$coefficients[1], model7$coefficients[1], model8$coefficients[1], 
+         model9$coefficients[1], model10$coefficients[1])
+beta <- c(model1$coefficients[2], model2$coefficients[2], model3$coefficients[2], 
+          model4$coefficients[2], model5$coefficients[2], model6$coefficients[2], model7$coefficients[2], model8$coefficients[2], 
+          model9$coefficients[2], model10$coefficients[2])
+residual_error <- c(summary(model1)$sigma, summary(model2)$sigma,summary(model3)$sigma,summary(model4)$sigma,summary(model5)$sigma,
+                    summary(model6)$sigma,summary(model7)$sigma,summary(model8)$sigma,summary(model9)$sigma,summary(model10)$sigma)
+a <- data.frame(alpha,beta, residual_error)
+row.names(a) <- c("GFC","ENX","BB","AD","ACA","UPM","KRC","STREV","CAI","HBRN")
+print(a)
+```
+
+###construct optimal portfolio
+alpha = 0.001239429
+beta =  0.7063661
+```{r}
+a$alpha_residual <- NA
+
+for (i in 1:nrow(a)) {
+  a$alpha_residual[i] <- a$alpha[i]/(a$residual_error[i])^2
+}
+print(a)
+
+sum <- sum(a[,4])
+
+#compute weight of each stock in the active portfolio
+a$weight <- NA
+for (i in 1:nrow(a)) {
+  a$weight[i] <- a$alpha_residual[i]/sum
+}
+print(a)
+
+#portfolio alpha
+alpha_p <- NA
+
+for (i in 1:(nrow(a))) {
+  alpha_p[i] <- a$alpha[i]*a$weight[i]
+}
+
+alpha_p <- sum(alpha_p)
+print(alpha_p) #alpha_p : 0.001246822
+
+#portfolio beta
+beta_p <- NA
+
+for (i in 1:(nrow(a))) {
+  beta_p[i] <- a$beta[i]*a$weight[i]
+}
+
+beta_p <- sum(beta_p)
+print(beta_p) #beta_p : 0.8597035
+
+```
+##performance analysis
+###optimal weighted portfolio
+```{r}
+library(readr)
+performance_track <- read_csv("/Users/yuning/Documents/T3/Portfolio Management/performance_track.csv", 
+                                  col_types = cols(ACA_return = col_number(), 
+                                                            AD_return = col_number(), BB_return = col_number(), 
+                                                           CAI_Return = col_number(), Dates = col_date(format = "%m/%d/%Y"), 
+                                                           ENX_return = col_number(), GFC_return = col_number(), 
+                                                           HBRN_return = col_number(), KCR_return = col_number(), 
+                                                          STREV_return = col_number(), UPM_return = col_number()))
+View(performance_track)
+
+```
+
+compute variance and volatility of the portfolio
+```{r}
+cov1 <- cov(performance_track[,2:11])
+weight <- as.vector(a$weight) 
+var_p <- t(weight)%*%cov1%*%weight
+var_p  #var(p) : 9.913014e-05
+
+sd_p <- sqrt(var_p)
+sd_p # sd(p) : 0.00995641
+```
+
+portfolio's daily return
+```{r}
+return_p <- t(weight)%*%t(performance_track[,2:11])
+return_p1 <- as.data.frame(t(return_p))
+row.names(return_p1) <- c(performance_track$Dates)
+colnames(return_p1) <- c("daily return")
+return_p1
+```
+
+risk-free interest rate 1st march 2018
+```{r}
+rf_yield1 <- 0.0068594
+rf_daily1 <- exp(rf_yield1/365) -1
+rf_daily1
+ret_p <- return_p1$`daily return` - rf_daily1
+```
+
+compute portfolio alpha and beta
+```{r}
+performance_track$mkt_premium1 <- NA
+
+for (i in 1:length(performance_track$Dates)) {
+  performance_track$mkt_premium1[i] <- performance_track$BM_return[i] - rf_daily1
+}
+
+mkt_premium1 <- performance_track$mkt_premium1
+
+#regression 
+model11 <- lm(ret_p~mkt_premium1)
+summary(model11) # alpha =  0.0010177, beta = 0.6705805
+```
+
+compute TE, SR, IR
+```{r}
+#compute tracking error
+track_error <- sqrt(var(return_p1$`daily return` - performance_track$BM_return))
+track_error # tracking error = 0.008677862
+
+#compute correlaton coefficient
+b <- cbind(performance_track$BM_return, return_p1$`daily return`)
+colnames(b) <- c("benchmark", "portfolio1")
+rownames(b) <- c(performance_track$Dates)
+cor(b) #correlaton = 0.562838
+
+#compute sharpe ratio
+SR <- (mean(return_p1$`daily return`) - rf_daily)/ sd_p
+SR #SR = -0.01387756
+
+#compute information ratio
+IR <- (mean(mean(return_p1$`daily return`) - mean(performance_track$BM_return)) )/ track_error
+IR #IR = 0.1439755
+```
+
+###equally weighted portfolio
+daily return, variance and volatility
+```{r}
+weight_equal <- c(0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1)
+return_p2 <- t(weight_equal)%*%t(performance_track[,2:11])
+return_p2 <- as.data.frame(t(return_p2))
+row.names(return_p2) <- c(performance_track$Dates)
+colnames(return_p2) <- c("daily return")
+return_p2
+
+var(return_p2$`daily return`) # var = 4.155637e-05
+sqrt(var(return_p2$`daily return`))
+```
+
+compute portfolio alpha and beta
+```{r}
+ret_p2 <- return_p2$`daily return` - rf_daily
+
+#regression 
+model12 <- lm(ret_p2~mkt_premium1)
+summary(model12) # alpha = 0.0004304, beta = 0.5666197
+```
+
+compute TE, SR, IR
+```{r}
+#compute tracking error
+track_error2 <- sqrt(var(return_p2$`daily return`- performance_track$BM_return))
+track_error2 # tracking error = 0.005679053
+
+#compute correlaton coefficient
+c <- cbind(performance_track$BM_return, return_p2$`daily return`)
+colnames(c) <- c("benchmark", "portfolio2")
+rownames(c) <- c(performance_track$Dates)
+cor(c) #correlaton = 0.7345278
+
+#compute sharpe ratio
+SR2 <- (mean(return_p2$`daily return`) - rf_daily)/ sd_p
+SR2 #SR = 0.003007479
+
+#compute information ratio
+IR2 <- (mean(mean(return_p1$`daily return`) - mean(performance_track$BM_return)) )/ track_error2
+IR2 #IR = 0.1018504
+
+#compute sharpe ratio of the bm
+SR3 <- (mean(performance_track$BM_return)- rf_daily) / sd(performance_track$BM_return)
+SR3 
+```
+
+##performance comparison
+
+daily return, daily return plot, correlation of securities
+```{r}
+require("ggplot2")
+
+d <- cbind.data.frame(return_p1$`daily return`, return_p2$`daily return`, performance_track$BM_return)
+colnames(d) <- c("portfolio_opt", "portfolio_equ","benchmark")
+row.names(d) <- c(performance_track$Dates)
+d
+Date <- performance_track$Dates
+Return <- d$portfolio_opt
+ggplot(d, aes(Date)) + 
+  geom_line(aes(y = Return, colour = "portfolio_opt")) + 
+  geom_line(aes(y = portfolio_equ, colour = "portfolio_equ")) +
+  geom_line(aes(y = benchmark, color ="benchmark"))
+
+# correlation between each component in the portfolio.
+library(ggcorrplot)
+corr2 <- cor(performance_track[,2:12])
+ggcorrplot(corr2, hc.order = TRUE, type = "lower",
+           outline.col = "white", lab = TRUE)
+
+```
